@@ -1,0 +1,64 @@
+body {
+    font-family: sans-serif;
+}
+
+#root {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 0 auto;
+}
+
+#titleHolder {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.title {
+    text-align: center;
+    width: 100%;
+    margin: 0 auto;
+    display: block;
+}
+
+.subtitle {
+    font-family: cursive;
+    font-style: italic;
+}
+
+p.info {
+    font-family: monospace;
+    font-weight: lighter;
+}
+
+.innerCell {
+    padding: 0.2em;
+    margin: 0.2rem;
+    text-align: center;
+    min-width: 10rem;
+    min-height: 10rem;
+    background: #f8f8f8;
+}
+
+.innerCell.hasAppt {
+    background: #d0f0d0;
+}
+
+p {
+    margin: 10px 0;
+}
+
+.apptDate {
+    font-size: larger;
+    font-weight: bold;
+}
+
+.grabLink {
+    font-size: larger;
+    font-family: monospace;
+    font-weight: bolder;
+    text-decoration: none;
+    background: #a0e8a0;
+    box-shadow: 2px -2px 2px #ccc;
+}
