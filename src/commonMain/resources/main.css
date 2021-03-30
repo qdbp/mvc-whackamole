@@ -3,16 +3,42 @@ body {
 }
 
 #root {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
     margin: 0 auto;
+    width: 100%;
 }
 
 #titleHolder {
     display: flex;
     justify-content: space-between;
     width: 100%;
+}
+
+#cellHolder {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 3rem;
+}
+
+#infoBox {
+    text-align: center;
+    font-weight: bold;
+    font-size: large;
+}
+
+#payBox {
+    position: fixed;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    margin-top: 5rem;
+}
+
+p.error {
+    color: #800000;
+}
+
+p.healthy {
+    color: #008000
 }
 
 .title {
@@ -55,11 +81,16 @@ p {
     font-weight: bold;
 }
 
-.grabLink {
+.myButton {
     font-size: larger;
     font-family: monospace;
     font-weight: bolder;
     text-decoration: none;
-    background: #a0e8a0;
     box-shadow: 2px -2px 2px #ccc;
+}
+.myButton.grabLink {
+    background: #a0e8a0;
+}
+.myButton.payLink {
+    background: #c0c0e8;
 }

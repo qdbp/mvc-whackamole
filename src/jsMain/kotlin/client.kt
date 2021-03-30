@@ -3,6 +3,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.time.ExperimentalTime
 import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.datetime.*
 import kotlinx.dom.clear
 import kotlinx.html.*
@@ -36,9 +37,11 @@ fun apptCell(details: ApptDetails, isoDate: Instant?, color: String): HTMLElemen
           classes += "hasAppt"
           with(isoDate!!.toLocalDateTime(TimeZone.currentSystemDefault())) {
             b(classes = "apptDate") { +"${month.name} $dayOfMonth" }
-            p(classes = "apptTime") { +("$hour".padStart(2, '0') + ':' + "$minute".padStart(2, '0')) }
+            p(classes = "apptTime") {
+              +("$hour".padStart(2, '0') + ':' + "$minute".padStart(2, '0'))
+            }
           }
-          input(type = InputType.button, classes = "grabLink") {
+          input(type = InputType.button, classes = "myButton grabLink") {
             onClick = "location.href='$url'"
             value = "GRAB IT!"
             classes += "grabLink"
@@ -50,37 +53,84 @@ fun apptCell(details: ApptDetails, isoDate: Instant?, color: String): HTMLElemen
 }
 
 @ExperimentalTime
-fun main() {
+class Socket {
 
-  // TODO figure out how to pass a build parameter rofl gradle is hard
-  // val socket = WebSocket("ws://127.0.0.1/ws")
-  val socket = WebSocket("ws://njmvc.enaumov.me/ws")
+  private lateinit var socket: WebSocket
 
-  socket.onmessage =
-      { message: MessageEvent ->
-        val details = Json.decodeFromString<ApptDetails>(message.data as String)
-        console.log("Received ${message.data as String} from server.")
-        with(details) {
-          val (color, isoDate) =
-              date?.let {
-                val isoDate = LocalDateTime.parse(date).toInstant(TimeZone.currentSystemDefault())
-                val today = Clock.System.now()
-                (isoDate - today).inDays.roundToInt().let { deltaDaysToColor(it) } to isoDate
-              }
-                  ?: "#f8f8f8" to null
+  init {
+    initSocket()
+  }
 
-          val cellContainer = document.getElementById(mvc.cellDivId())
+  private fun clearError() {
+    val errorHolder = document.getElementById("infoBox")!!
+    errorHolder.clear()
+  }
 
-          cellContainer!!.let {
-            it.clear()
-            it.append(apptCell(details, isoDate, color))
+  private fun setLiveness(msg: String, cls: String) {
+    val errorHolder = document.getElementById("infoBox")!!
+    errorHolder.clear()
+    errorHolder.append(document.create.p(classes = cls) { +msg })
+  }
+
+  private fun onMessage(message: MessageEvent) {
+    val details = Json.decodeFromString<ApptDetails>(message.data as String)
+    console.log("Received ${message.data as String} from server.")
+    with(details) {
+      val (color, isoDate) =
+          date?.let {
+            val isoDate = LocalDateTime.parse(date).toInstant(TimeZone.currentSystemDefault())
+            val today = Clock.System.now()
+            (isoDate - today).inDays.roundToInt().let { deltaDaysToColor(it) } to isoDate
           }
+              ?: "#f8f8f8" to null
+
+      val cellContainer = document.getElementById(mvc.cellDivId())
+
+      cellContainer!!.let {
+        it.clear()
+        it.append(apptCell(details, isoDate, color))
+      }
+    }
+  }
+
+  private var alreadyRecovering: Boolean = false
+  private fun reconnect() {
+    if (alreadyRecovering) {
+      return
+    }
+    socket.close()
+    setLiveness("Connection to server severed... trying to reconnect.", "error")
+    window.setTimeout(::initSocket, 5000)
+    alreadyRecovering = true
+  }
+
+  private fun initSocket() {
+    alreadyRecovering = false
+
+    socket = WebSocket("ws://njmvc.enaumov.me/ws")
+
+    socket.onmessage = ::onMessage
+    socket.onopen =
+        {
+          clearError()
+          console.log("Websocket opened.")
+          setLiveness("Server connected.", "healthy")
+          socket.send("")
         }
-      }
-  socket.onopen =
-      {
-        console.log("Websocket opened.")
-        socket.send("")
-      }
-  socket.onerror = { console.error(it) }
+    socket.onclose =
+        {
+          console.error(it)
+          reconnect()
+        }
+    socket.onerror =
+        {
+          console.error(it)
+          reconnect()
+        }
+  }
+}
+
+@ExperimentalTime
+fun main() {
+  Socket()
 }

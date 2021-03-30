@@ -1,3 +1,4 @@
+import io.ktor.http.*
 import java.time.LocalDateTime as JLDT
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -11,10 +12,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 import org.apache.hc.client5.http.classic.methods.HttpGet
-import org.apache.hc.client5.http.config.RequestConfig
 import org.apache.hc.client5.http.impl.classic.HttpClients
-import org.apache.hc.core5.util.TimeValue
-import org.apache.hc.core5.util.Timeout
 
 internal val mvcLogger = KotlinLogging.logger("MVC")
 
@@ -23,7 +21,6 @@ private const val QUERY_URL =
 private const val SCHEDULE_URL = "https://telegov.njportal.com/njmvc/AppointmentWizard"
 
 private val NEXT_APT_FORMAT = DateTimeFormatter.ofPattern("MM/dd/yyyy hh:mm a")
-private val DISPLAY_FMT = DateTimeFormatter.ofPattern("MMM dd, hh:mm a")
 
 fun LocalDateTime.format(formatter: DateTimeFormatter): String {
   return this.toJavaLocalDateTime().format(formatter)
@@ -37,25 +34,11 @@ object MVCFetcher {
   // TODO add all appointment types
   private const val typeId = 11
 
-  private val requestConfig =
-      RequestConfig.custom().setConnectionRequestTimeout(Timeout.ofSeconds(5)).build()
-
-
-  private val client =
-      HttpClients.custom()
-          .setDefaultRequestConfig(requestConfig)
-          .setKeepAliveStrategy { _, _ -> TimeValue.ofSeconds(10) }
-          .build()
-
+  private val client = HttpClients.createDefault()
   private val availMap: MutableMap<MVC, LocalDateTime?> =
       MVC.values().associateWith { null }.toMutableMap()
 
   val lastUpdated: Map<MVC, Instant> = availMap.mapValues { Clock.System.now() }.toMutableMap()
-  private val queryDelay = System.getenv("QUERY_DELAY_MS")?.toLong() ?: 200
-
-  init {
-    mvcLogger.info { "Starting fetcher with delay = $queryDelay ms" }
-  }
 
   fun getForMVC(mvc: MVC): ApptDetails {
     availMap[mvc]?.let {
@@ -67,7 +50,10 @@ object MVCFetcher {
   }
 
   private var lastSuccess: Instant = Clock.System.now()
-
+  private val queryDelay = System.getenv("QUERY_DELAY_MS")?.toLong() ?: 200
+  init {
+    mvcLogger.info { "Starting fetcher with delay = $queryDelay ms" }
+  }
   fun start() {
     lastUpdated as MutableMap
     thread(name = "watchdog") {
@@ -86,11 +72,17 @@ object MVCFetcher {
     }
 
     thread(name = "fetcher", isDaemon = true) {
+      val gets =
+          MVC.values().associateWith {
+            HttpGet("$QUERY_URL?appointmentTypeId=$typeId&locationId=${it.id}")
+          }
+
       while (true) {
         MVC.values().forEach { mvc ->
           Thread.sleep(queryDelay)
           try {
-            val get = HttpGet("$QUERY_URL?appointmentTypeId=$typeId&locationId=${mvc.id}")
+
+            val get = gets[mvc]!!
             val resp = client.execute(get)
 
             if (resp.code != 200) {
@@ -102,8 +94,9 @@ object MVCFetcher {
 
             // TEST
             val next =
-                Json.decodeFromString<NextAppt>(resp.entity.content.readAllBytes().decodeToString())
-                    .next
+                resp.entity.content.use {
+                  Json.decodeFromString<NextAppt>(it.readAllBytes().decodeToString()).next
+                }
 
             if (next == "No Appointments Available") {
               availMap.remove(mvc)?.also {

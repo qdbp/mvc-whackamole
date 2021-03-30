@@ -11,13 +11,13 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.websocket.*
 import kotlin.random.Random
+import kotlin.time.ExperimentalTime
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.html.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlin.time.ExperimentalTime
 
 val motds =
     listOf(
@@ -48,16 +48,36 @@ fun HTML.index() {
           br {}
           p(classes = "info") {
             +("Appointment slots show automatically -- do not refresh the page. " +
-                "Latest slot shown. " +
+                "Earliest slot shown. " +
                 "Max 3 seconds delay from slot opening, or your money back.")
           }
         }
         img(classes = "bestFlag", src = "/nj.png")
       }
-      MVC.values().forEach {
-        div {
-          id = it.cellDivId()
-          div(classes = "innerCell") { p { +"No Data" } }
+      div { id = "infoBox" }
+      div {
+        id = "cellHolder"
+        MVC.values().forEach {
+          div {
+            id = it.cellDivId()
+            div(classes = "innerCell") { p { +"No Data" } }
+          }
+        }
+      }
+      div {
+        id = "payBox"
+        form(action = "https://www.paypal.com/donate", method = FormMethod.post) {
+          target = "_blank"
+          input(type = InputType.hidden, name = "business") {
+            value ="NQA8Y4HF65LQN"
+          }
+          input(type= InputType.hidden, name="currency_code") {
+            value="USD"
+          }
+          input(type=InputType.submit, classes="myButton payLink", name="submit") {
+            value="PAY ME!"
+          }
+
         }
       }
     }

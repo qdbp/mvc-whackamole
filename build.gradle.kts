@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "me.enaumov"
-version = "0.12"
+version = "0.14"
 
 repositories {
     jcenter()
@@ -68,6 +68,7 @@ kotlin {
                 implementation("io.github.microutils:kotlin-logging-jvm:2.0.6")
                 implementation("org.slf4j:slf4j-simple:1.7.29")
             }
+            resources
         }
         val jvmTest by getting {
             dependencies {
@@ -113,11 +114,6 @@ tasks.getByName<JavaExec>("run") {
     dependsOn(tasks.getByName<Jar>("jvmJar"))
     classpath(tasks.getByName<Jar>("jvmJar"))
 }
-
-// Alias "installDist" as "stage" (for cloud providers)
-// tasks.create("stage") {
-//     dependsOn(tasks.getByName("installDist"))
-// }
 
 // only necessary until https://youtrack.jetbrains.com/issue/KT-37964 is resolved
 distributions {
