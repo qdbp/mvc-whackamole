@@ -17,14 +17,16 @@ import kotlinx.datetime.Instant
 import kotlinx.html.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.ExperimentalTime
 
 val motds =
     listOf(
-        "SCHEDULE FIRST ASK QUESTIONS LATER",
+        "SCHEDULE FIRST ASK QUESTIONS LATER!",
         "GRAB IT!",
         "THANKS, MURPHY!",
-        "SALEM IS LOVELY",
-        "STILL BETTER THAN NJ TRANSIT")
+        "SALEM IS LOVELY!",
+        "STILL BETTER THAN NJ TRANSIT!",
+    )
 
 fun HTML.index() {
 
@@ -45,7 +47,9 @@ fun HTML.index() {
           p(classes = "title subtitle") { +motds[Random.nextInt(motds.size)] }
           br {}
           p(classes = "info") {
-            +"This page refreshes automatically. Latest slot shown. Max 3 seconds delay from slot opening, or your money back."
+            +("Appointment slots show automatically -- do not refresh the page. " +
+                "Latest slot shown. " +
+                "Max 3 seconds delay from slot opening, or your money back.")
           }
         }
         img(classes = "bestFlag", src = "/nj.png")
@@ -61,9 +65,14 @@ fun HTML.index() {
   }
 }
 
+@ExperimentalTime
 fun main() {
 
   MVCFetcher.start()
+
+  val sendDelay = System.getenv("REFRESH_DELAY_MS")?.toLong() ?: 50
+
+  mvcLogger.info { "Starting servers with refresh delay = $sendDelay ms" }
 
   embeddedServer(Netty, port = 8080, host = "127.0.0.1") {
         install(Compression) { gzip() }
@@ -78,10 +87,9 @@ fun main() {
         install(WebSockets) { pingPeriodMillis = 5000 }
         routing {
           webSocket("/ws") {
-            val host = this.call.request.origin.host
-            mvcLogger.info { "New connection from $host" }
+            val host = this.call.request.origin.remoteHost
 
-            // burn one incoming frame to singify the client is ready
+            // burn one incoming frame to signify the client is ready
             incoming.receive()
             val lastSentTime = MVC.values().associateWith { Instant.DISTANT_PAST } as MutableMap
 
@@ -94,7 +102,7 @@ fun main() {
                     send(Json.encodeToString(MVCFetcher.getForMVC(mvc)))
                   }
                 }
-                delay(50)
+                delay(sendDelay)
               }
             }
           }

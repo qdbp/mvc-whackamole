@@ -28,6 +28,7 @@ body {
 }
 
 p.info {
+    text-align: center;
     font-family: monospace;
     font-weight: lighter;
 }
