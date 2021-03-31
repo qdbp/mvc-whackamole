@@ -1,3 +1,5 @@
+@file:Suppress("UNUSED_VARIABLE")
+
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
 
 plugins {
@@ -7,7 +9,7 @@ plugins {
 }
 
 group = "me.enaumov"
-version = "0.14"
+version = "1.0rc1"
 
 repositories {
     jcenter()

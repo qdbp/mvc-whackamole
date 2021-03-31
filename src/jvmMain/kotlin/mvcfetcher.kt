@@ -39,34 +39,54 @@ object MVCFetcher {
       MVC.values().associateWith { null }.toMutableMap()
 
   val lastUpdated: Map<MVC, Instant> = availMap.mapValues { Clock.System.now() }.toMutableMap()
+  val updateLog: Map<Instant, String> =
+      object : LinkedHashMap<Instant, String>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Instant, String>?): Boolean {
+          return size > 10
+        }
+      }
 
-  fun getForMVC(mvc: MVC): ApptDetails {
+  fun getForMVC(mvc: MVC): MVCWsMsg {
     availMap[mvc]?.let {
-      return ApptDetails(mvc, it.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), apptUrl(mvc, it))
+      return ApptAvail(mvc, it.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), apptUrl(mvc, it))
     }
         ?: run {
-          return ApptDetails(mvc, null, null)
+          return ApptTaken(mvc)
         }
   }
-
-  private var lastSuccess: Instant = Clock.System.now()
+  var lastSuccess: Instant = Clock.System.now()
+    private set
   private val queryDelay = System.getenv("QUERY_DELAY_MS")?.toLong() ?: 200
   init {
     mvcLogger.info { "Starting fetcher with delay = $queryDelay ms" }
   }
+
+  private fun infoWithAppend(msg: String) {
+    updateLog as MutableMap
+    mvcLogger.info { msg }
+    updateLog[Clock.System.now()] = msg
+  }
+
+  private fun watchdogLoop() {
+    Clock.System.now().let {
+      when {
+        it - lastSuccess > 30.seconds -> exitProcess(-1)
+        it - lastSuccess > 20.seconds ->
+            mvcLogger.error { "More than 20 seconds since last update!" }
+        it - lastSuccess > 10.seconds ->
+            mvcLogger.warn { "More than 10 seconds since last update!" }
+      }
+    }
+  }
+
   fun start() {
     lastUpdated as MutableMap
+
+    infoWithAppend("Restarted.")
+
     thread(name = "watchdog") {
       while (true) {
-        Clock.System.now().let {
-          when {
-            it - lastSuccess > 15.seconds -> exitProcess(-1)
-            it - lastSuccess > 10.seconds ->
-                mvcLogger.error { "More than 10 seconds since last update!" }
-            it - lastSuccess > 5.seconds ->
-                mvcLogger.warn { "More than 5 seconds since last update!" }
-          }
-        }
+        watchdogLoop()
         Thread.sleep(1000)
       }
     }
@@ -101,9 +121,8 @@ object MVCFetcher {
             if (next == "No Appointments Available") {
               availMap.remove(mvc)?.also {
                 lastUpdated[mvc] = Clock.System.now()
-                mvcLogger.info {
-                  "Appointment for ${mvc.location} at ${it.format(NEXT_APT_FORMAT)} taken."
-                }
+                infoWithAppend(
+                    "Appointment for ${mvc.location} at ${it.format(NEXT_APT_FORMAT)} taken.")
               }
               return@forEach
             }
@@ -115,7 +134,7 @@ object MVCFetcher {
             availMap[mvc] = gotDate
             lastUpdated[mvc] = Clock.System.now()
 
-            mvcLogger.info { "New slot at ${mvc.location} at ${gotDate.format(NEXT_APT_FORMAT)}" }
+            infoWithAppend("New slot at ${mvc.location} at ${gotDate.format(NEXT_APT_FORMAT)}")
           } catch (e: Exception) {
             mvcLogger.error { "Caught $e" }
             Thread.sleep(1000)

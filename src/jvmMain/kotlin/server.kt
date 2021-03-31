@@ -10,14 +10,19 @@ import io.ktor.routing.routing
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.websocket.*
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.time.ExperimentalTime
+import kotlin.time.seconds
 import kotlinx.coroutines.delay
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
+import kotlinx.datetime.*
 import kotlinx.html.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+val NJTZ = TimeZone.of("US/Eastern")
+private val LOG_FORMAT = DateTimeFormatter.ofPattern("MMMM dd, hh:mm:ss a")
 
 val motds =
     listOf(
@@ -49,18 +54,30 @@ fun HTML.index() {
           p(classes = "info") {
             +("Appointment slots show automatically -- do not refresh the page. " +
                 "Earliest slot shown. " +
-                "Max 3 seconds delay from slot opening, or your money back.")
+                "Links usually appear within 3 seconds of slot availability.")
           }
+          p(classes = "info") { +"Sound will play when a desired appointment opens." }
         }
         img(classes = "bestFlag", src = "/nj.png")
       }
       div { id = "infoBox" }
       div {
         id = "cellHolder"
+        div(classes = "outerCell controlBox") {
+          id = "datePicker"
+          h3 { +"Alert date." }
+          hr {}
+          input(type = InputType.date) { id = "datePickerInput" }
+          p(classes = "info") { +"Only appointments on or before this date will alert." }
+        }
         MVC.values().forEach {
-          div {
+          div(classes = "outerCell") {
             id = it.cellDivId()
-            div(classes = "innerCell") { p { +"No Data" } }
+            div(classes = "checkboxHolder controlBox") {
+              input(type = InputType.checkBox) { checked = true }
+              p { +"Alert if available." }
+            }
+            div(classes = "innerCell noData") { p { +"No Data" } }
           }
         }
       }
@@ -68,18 +85,14 @@ fun HTML.index() {
         id = "payBox"
         form(action = "https://www.paypal.com/donate", method = FormMethod.post) {
           target = "_blank"
-          input(type = InputType.hidden, name = "business") {
-            value ="NQA8Y4HF65LQN"
+          input(type = InputType.hidden, name = "business") { value = "NQA8Y4HF65LQN" }
+          input(type = InputType.hidden, name = "currency_code") { value = "USD" }
+          input(type = InputType.submit, classes = "myButton payLink", name = "submit") {
+            value = "PAY ME!"
           }
-          input(type= InputType.hidden, name="currency_code") {
-            value="USD"
-          }
-          input(type=InputType.submit, classes="myButton payLink", name="submit") {
-            value="PAY ME!"
-          }
-
         }
       }
+      div { id = "logBox" }
     }
     script(src = "output.js") {}
   }
@@ -112,18 +125,48 @@ fun main() {
             // burn one incoming frame to signify the client is ready
             incoming.receive()
             val lastSentTime = MVC.values().associateWith { Instant.DISTANT_PAST } as MutableMap
+            var lastLogSentTime: Instant = Instant.DISTANT_PAST
+            var hasWarned: Boolean = false
 
             while (true) {
+              // send appointment slots
               MVC.values().forEach { mvc ->
                 MVCFetcher.lastUpdated[mvc]?.let {
                   if (it > lastSentTime[mvc]!!) {
-                    lastSentTime[mvc] = Clock.System.now()
+                    val now = Clock.System.now()
+                    lastSentTime[mvc] = now
                     mvcLogger.debug { "Sending new for $mvc to $host" }
                     send(Json.encodeToString(MVCFetcher.getForMVC(mvc)))
                   }
                 }
                 delay(sendDelay)
               }
+
+              // send recent logs
+              MVCFetcher.updateLog.entries.forEach { (logTime, msg) ->
+                if (logTime > lastLogSentTime) {
+                  lastLogSentTime = logTime
+                  send(
+                      Json.encodeToString<MVCWsMsg>(
+                          MVCLogLine(msg, logTime.toLocalDateTime(NJTZ).format(LOG_FORMAT))))
+                }
+              }
+              delay(sendDelay)
+
+              // send warnings
+              val lastSuccAgo = Clock.System.now() - MVCFetcher.lastSuccess
+              if (lastSuccAgo > 5.seconds) {
+                hasWarned = true
+                send(
+                    Json.encodeToString<MVCWsMsg>(
+                        MVCServerStatus(
+                            "No updates for ${lastSuccAgo.inSeconds.roundToInt()} seconds",
+                            "warning")))
+              } else if (hasWarned) {
+                hasWarned = false
+                send(Json.encodeToString<MVCWsMsg>(MVCServerStatus("Server connected.", "healthy")))
+              }
+              delay(sendDelay)
             }
           }
         }
