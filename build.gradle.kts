@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "me.enaumov"
-version = "1.1.3"
+version = "1.1.4"
 
 repositories {
     jcenter()

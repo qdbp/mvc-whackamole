@@ -1,3 +1,4 @@
+import kotlin.math.log
 import kotlin.time.ExperimentalTime
 import kotlinx.browser.document
 import kotlinx.browser.window
@@ -124,16 +125,39 @@ fun setStatusLine(status: MVCServerStatus?) {
   }
 }
 
-var logInitialized = false
+/** Encapsulates the "FOMO log", which displays messages from the server. */
+object FomoLog {
 
-fun increaseFomo(msg: MVCLogLine) {
-  with(document.getElementById(LOG_BOX_ID)!!) {
-    while (childNodes.length > 10) {
-      removeChild(childNodes[childNodes.length - 1]!!)
+  private const val maxLogEntries = 8
+
+  private val logBox = document.getElementById(LOG_BOX_ID)!!
+
+  private fun keepEntriesUpTo(numToKeep: Int = maxLogEntries) {
+    with(logBox) {
+      while (childNodes.length > numToKeep) {
+        removeChild(childNodes[childNodes.length - 1]!!)
+      }
     }
-    val ts = if (msg.isoDate != null) "${msg.isoDate}: " else ""
-    insertBefore(
-        document.create.div(classes = "logLineBox") { p { +"$ts${msg.msg}" } }, childNodes[0])
+  }
+
+  fun ensureInitEntry() {
+    if (logBox.childNodes.length == 0) {
+      addEntry(MVCLogLine("New and taken appointments will appear in the FOMO log.", null))
+    }
+  }
+
+  fun clear() {
+    keepEntriesUpTo(0)
+  }
+
+  fun addEntry(line: MVCLogLine) {
+    with(logBox) {
+      keepEntriesUpTo(maxLogEntries - 1)
+      val ts = if (line.isoDate != null) "${line.isoDate}: " else ""
+      insertBefore(
+          document.create.div(classes = "logLineBox shadowed") { p { +"$ts${line.msg}" } },
+          childNodes[0])
+    }
   }
 }
 
@@ -176,7 +200,7 @@ class Socket {
     console.log("Received ${message.data as String} from server.")
     when (msg) {
       is ApptDetails -> ApptState.updateDetails(msg)
-      is MVCLogLine -> increaseFomo(msg)
+      is MVCLogLine -> FomoLog.addEntry(msg)
       is MVCServerStatus -> setStatusLine(msg)
       // todo refine hierarchy to disallow this
       is MVCClientMsg -> console.error("Got client message from server -- oopsie.")
@@ -207,11 +231,7 @@ class Socket {
         {
           console.log("Websocket opened.")
           setStatusLine(MVCServerStatus("Server connected.", "healthy"))
-          if (!logInitialized) {
-            logInitialized = true
-            increaseFomo(
-                MVCLogLine("New and taken appointments will appear in the FOMO log.", null))
-          }
+          FomoLog.ensureInitEntry()
           // ready indicator "burn" message
           socket.send("")
           // always send our current apt type on reconnect to avoid staleness
@@ -255,7 +275,7 @@ fun main() {
   val socket = Socket()
 
   // install timers
-  window.setInterval(ApptState::alertIfNeeded, 3000)
+  window.setInterval(ApptState::alertIfNeeded, 2500)
 
   // install listeners
   Notification.requestPermission {
@@ -270,9 +290,11 @@ fun main() {
       callback = {
         ApptState.invalidateAll()
         val apptType = getCurApptType()
+        updateLayoutForApptType(apptType)
         val msg = Json.encodeToString(MVCClientMsg(apptType))
         socket.send(msg)
-        updateLayoutForApptType(apptType)
+        FomoLog.clear()
+        FomoLog.ensureInitEntry()
       })
 
   DATE_INPUT.addEventListener("change", callback = { ApptState.redrawAll() })

@@ -1,7 +1,8 @@
 :root {
-    --light-bg: #f8f8f8;
+    --light-bg: #f0f0f0;
     --dark-bg: #c8c8c8;
-    --border-color: #c0c0c0
+    --border-color: #c0c0c0;
+    --std-shadow: -2px 2px 1px #ddd;
 }
 
 body {
@@ -22,7 +23,7 @@ body {
 #cellHolder {
     box-sizing: border-box;
     display: flex;
-    justify-content: center;
+    justify-content: space-evenly;
     flex-wrap: wrap;
     padding: 1.5rem 1.5rem;
     position: absolute;
@@ -36,7 +37,7 @@ body {
     font-size: large;
 }
 
-#payBox {
+#footerBox {
     position: fixed;
     bottom: 0.5rem;
     left: 0.5rem;
@@ -45,23 +46,21 @@ body {
 
 #logBoxHolder {
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
     position: absolute;
     right: 0;
     width: 20%;
     padding: 0.5rem;
 }
 
-#logBoxHolder .logLineBox {
+#logBox {
+    display: flex;
+    flex-direction: column;
+}
+
+#logBox .logLineBox {
     background: var(--light-bg);
-    border-width: 1px;
-    border-style: solid;
-    border-color: var(--border-color);
-    box-shadow: -2px 2px 2px #ccc;
-    text-align: left;
-    font-family: monospace;
     font-size: small;
+    margin: 2px 0;
 }
 
 .title, select {
@@ -135,28 +134,35 @@ p.info {
     max-width: 10rem;
     min-width: 10rem;
     max-height: 12rem;
-    /* background: #f8f8f8; */
 }
 
 .outerCell p {
     margin: 0.1rem 0;
 }
 
-.controlBox {
-    box-sizing: border-box;
-    padding: 0.2rem;
-    background: var(--dark-bg);
+.bordered {
     border-color: var(--border-color);
     border-width: 1px;
     border-style: solid;
 }
 
+.shadowed {
+    box-shadow: var(--std-shadow);
+}
+
+.controlBox {
+    box-sizing: border-box;
+    padding: 0.2rem;
+    background: var(--dark-bg);
+}
+
+.outerCell {
+    box-shadow: var(--std-shadow);
+}
+
 .outerCell .innerCell {
     box-sizing: border-box;
     padding: 0.2em;
-    border-color: var(--border-color);
-    border-width: 1px;
-    border-style: solid;
     height: 10rem;
 }
 
@@ -201,7 +207,6 @@ p.info {
     font-family: monospace;
     font-weight: bolder;
     text-decoration: none;
-    box-shadow: 2px -2px 2px #ccc;
 }
 
 .myButton.grabLinkFresh {
@@ -214,4 +219,8 @@ p.info {
 
 .myButton.payLink {
     background: #c0c0e8;
+}
+
+.myButton.siteLink {
+    background: #e8a8a8
 }
