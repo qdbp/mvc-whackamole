@@ -43,7 +43,7 @@ body {
     margin-top: 5rem;
 }
 
-#logBox {
+#logBoxHolder {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -53,7 +53,7 @@ body {
     padding: 0.5rem;
 }
 
-#logBox .logLineBox {
+#logBoxHolder .logLineBox {
     background: var(--light-bg);
     border-width: 1px;
     border-style: solid;
@@ -63,6 +63,42 @@ body {
     font-family: monospace;
     font-size: small;
 }
+
+.title, select {
+    font-size: xx-large;
+    font-weight: bolder;
+}
+
+select {
+    margin: 0 1rem;
+}
+
+select option {
+    text-align: center;
+}
+
+#title {
+    text-align: center;
+    width: 100%;
+    margin: 0 auto;
+    display: block;
+}
+
+#apptTypeId {
+    text-align: center;
+}
+
+.subtitle {
+    text-align: center;
+    font-size: larger;
+    margin: 0.5rem;
+}
+
+hr {
+    background: var(--dark-bg);
+    border: 1px;
+}
+
 .logLineBox p {
     margin: 1rem;
 }
@@ -79,12 +115,6 @@ p.healthy {
     color: #008000
 }
 
-.title {
-    text-align: center;
-    width: 100%;
-    margin: 0 auto;
-    display: block;
-}
 
 .subtitle {
     font-family: cursive;
@@ -95,6 +125,7 @@ p.info {
     text-align: center;
     font-family: monospace;
     font-weight: lighter;
+    margin: 0.3rem;
 }
 
 .outerCell {
@@ -108,7 +139,7 @@ p.info {
 }
 
 .outerCell p {
-    margin: 0.2rem 0;
+    margin: 0.1rem 0;
 }
 
 .controlBox {
@@ -143,8 +174,21 @@ p.info {
     font-weight: bolder;
 }
 
+.mvcTitle {
+    font-size: large;
+    margin: 0.5rem 0 0 0;
+}
+
 .innerCell.hasAppt {
     background: #d0f0d0;
+}
+
+.innerCell.noAppt {
+    background: var(--light-bg);
+}
+
+.innerCell.noData {
+    background: var(--dark-bg);
 }
 
 .apptDate {
@@ -160,8 +204,12 @@ p.info {
     box-shadow: 2px -2px 2px #ccc;
 }
 
-.myButton.grabLink {
+.myButton.grabLinkFresh {
     background: #a0e8a0;
+}
+
+.myButton.grabLinkOld {
+    background: #e0c040;
 }
 
 .myButton.payLink {
