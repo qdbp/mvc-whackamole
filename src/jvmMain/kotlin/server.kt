@@ -189,7 +189,7 @@ fun main() {
               val fetcher = fetchers[curApptType]!!
 
               // send appointment slots
-              MVC.values().forEach { mvc ->
+              curApptType.centers.forEach { mvc ->
                 fetcher.lastUpdated[mvc]?.let {
                   if (it > lastSentTime[mvc]!!) {
                     val now = Clock.System.now()
