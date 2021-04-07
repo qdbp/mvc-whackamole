@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "me.enaumov"
-version = "1.0rc1"
+version = "1.1"
 
 repositories {
     jcenter()
@@ -108,7 +108,9 @@ tasks.getByName<KotlinWebpack>("jsBrowserDevelopmentWebpack") {
 
 tasks.getByName<Jar>("jvmJar") {
     dependsOn(tasks.getByName("jsBrowserProductionWebpack"))
-    val webpack = tasks.getByName<KotlinWebpack>("jsBrowserDevelopmentWebpack")
+    val webpack = tasks.getByName<KotlinWebpack>("jsBrowserProductionWebpack")
+    // dependsOn(tasks.getByName("jsBrowserDevelopmentWebpack"))
+    // val webpack = tasks.getByName<KotlinWebpack>("jsBrowserDevelopmentWebpack")
     from(File(webpack.destinationDirectory, webpack.outputFileName))
 }
 

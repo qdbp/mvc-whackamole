@@ -16,9 +16,9 @@ import org.apache.hc.client5.http.impl.classic.HttpClients
 
 internal val mvcLogger = KotlinLogging.logger("MVC")
 
-private const val QUERY_URL =
-    "https://telegov.njportal.com/njmvc/CustomerCreateAppointments/GetNextAvailableDate"
-private const val SCHEDULE_URL = "https://telegov.njportal.com/njmvc/AppointmentWizard"
+private const val BASE_URL = "https://telegov.njportal.com/njmvc/"
+private const val QUERY_URL = "${BASE_URL}CustomerCreateAppointments/GetNextAvailableDate"
+private const val SCHEDULE_URL = "${BASE_URL}AppointmentWizard"
 
 private val NEXT_APT_FORMAT = DateTimeFormatter.ofPattern("MM/dd/yyyy hh:mm a")
 
@@ -27,14 +27,17 @@ fun LocalDateTime.format(formatter: DateTimeFormatter): String {
 }
 
 @ExperimentalTime
-object MVCFetcher {
+class MVCFetcher(val apptType: ApptType) {
 
   @Serializable private data class NextAppt(val next: String)
 
-  // TODO add all appointment types
-  private const val typeId = 11
+  companion object {
+    private val staticClient = HttpClients.createDefault()
+    init {
+      mvcLogger.info { "init companion" }
+    }
+  }
 
-  private val client = HttpClients.createDefault()
   private val availMap: MutableMap<MVC, LocalDateTime?> =
       MVC.values().associateWith { null }.toMutableMap()
 
@@ -48,17 +51,20 @@ object MVCFetcher {
 
   fun getForMVC(mvc: MVC): MVCWsMsg {
     availMap[mvc]?.let {
-      return ApptAvail(mvc, it.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), apptUrl(mvc, it))
+      return ApptAvail(
+          mvc, apptType, it.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), apptUrl(mvc, it))
     }
         ?: run {
-          return ApptTaken(mvc)
+          return ApptTaken(mvc, apptType)
         }
   }
+
   var lastSuccess: Instant = Clock.System.now()
     private set
-  private val queryDelay = System.getenv("QUERY_DELAY_MS")?.toLong() ?: 200
   init {
-    mvcLogger.info { "Starting fetcher with delay = $queryDelay ms" }
+    mvcLogger.info {
+      "Starting fetcher for ${apptType.fullName} with delay = ${apptType.queryDelay} ms"
+    }
   }
 
   private fun infoWithAppend(msg: String) {
@@ -82,28 +88,26 @@ object MVCFetcher {
   fun start() {
     lastUpdated as MutableMap
 
-    infoWithAppend("Restarted.")
-
-    thread(name = "watchdog") {
+    thread(name = "watchdog${apptType.name}") {
       while (true) {
         watchdogLoop()
         Thread.sleep(1000)
       }
     }
 
-    thread(name = "fetcher", isDaemon = true) {
+    thread(name = "fetcher${apptType.name}", isDaemon = true) {
       val gets =
           MVC.values().associateWith {
-            HttpGet("$QUERY_URL?appointmentTypeId=$typeId&locationId=${it.id}")
+            HttpGet("$QUERY_URL?appointmentTypeId=${apptType.id}&locationId=${it.id}")
           }
 
       while (true) {
-        MVC.values().forEach { mvc ->
-          Thread.sleep(queryDelay)
+        apptType.centers.forEach { mvc ->
+          Thread.sleep(apptType.queryDelay)
           try {
 
             val get = gets[mvc]!!
-            val resp = client.execute(get)
+            val resp = staticClient.execute(get)
 
             if (resp.code != 200) {
               println("Got code ${resp.code}!")
@@ -147,7 +151,7 @@ object MVCFetcher {
 
   private fun apptUrl(mvc: MVC, date: LocalDateTime): String {
     val minString = "${date.minute}".padStart(2, '0')
-    return "$SCHEDULE_URL/$typeId/${mvc.id}/" +
+    return "$SCHEDULE_URL/${apptType.id}/${mvc.id}/" +
         "${date.format(DateTimeFormatter.ISO_DATE)}/${date.hour}$minString"
   }
 }

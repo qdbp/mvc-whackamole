@@ -1,26 +1,23 @@
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.time.ExperimentalTime
 import kotlinx.browser.document
 import kotlinx.browser.window
-import kotlinx.datetime.*
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.dom.clear
 import kotlinx.html.*
 import kotlinx.html.dom.create
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.w3c.dom.*
 import org.w3c.notifications.GRANTED
 import org.w3c.notifications.Notification
 import org.w3c.notifications.NotificationPermission
 
-const val NO_APPT_BG_COLOR: String = "#f8f8f8"
+val ERROR_HOLDER = document.getElementById(INFO_BOX_ID)!!
+val DATE_INPUT = document.getElementById(DATE_PICKER_INPUT_ID)!!
+val APPT_TYPE_SELECTOR = document.getElementById(APPT_TYPE_SEL_ID)!!
 
-val ERROR_HOLDER = document.getElementById("infoBox")!!
-val DATE_INPUT = document.getElementById("datePickerInput")!!
-
-val curAppts: MutableMap<MVC, ApptDetails> = mutableMapOf()
 var allowNotify: Boolean = false
 
 fun getMvcBox(mvc: MVC): Element {
@@ -28,46 +25,94 @@ fun getMvcBox(mvc: MVC): Element {
 }
 
 @ExperimentalTime
-fun getCellColor(apptInstant: Instant): String {
+object ApptState {
 
-  val days = (apptInstant - Clock.System.now()).inDays.roundToInt()
-  val truncDays = max(0, min(days, 60)).toDouble()
+  private val curAppts: MutableMap<MVC, ApptDetails> = mutableMapOf()
+  private val alertAudio = Audio("apptavail.wav")
 
-  val red = (180 + 50 * max(0.0, truncDays / 30.0 - 1)).roundToInt()
-  val green = (180 + 50 * max(0.0, 1 - truncDays / 30.0)).roundToInt()
+  fun updateDetails(details: ApptDetails) {
+    curAppts[details.mvc] = details
+    render(details)
+  }
 
-  return red.toString(16).padEnd(2, '0') + green.toString(16).padEnd(2, '0') + "c0"
-}
+  private fun render(details: ApptDetails) {
+    val outerCell = document.getElementById(details.mvc.cellDivId())!!
+    with(outerCell) {
+      removeChild(children[children.length - 1]!!)
+      append(
+          document.create.div(classes = INNER_CELL_CLS) {
+            h3(classes = "mvcTitle") { +details.mvc.location }
+            hr {}
+            when (details) {
+              is ApptNoData -> {
+                classes += "noData"
+                p { +"No data." }
+              }
+              is ApptTaken -> {
+                classes += "noAppt"
 
-@ExperimentalTime
-fun drawApptCell(msg: ApptDetails): HTMLElement {
-  return document.create.div(classes = "innerCell") {
-    h3(classes = "mvcTitle") { +msg.mvc.location }
-    hr {}
-    when (msg) {
-      is ApptTaken -> {
-        classes += "noAppt"
-        this@div.style = "background: $NO_APPT_BG_COLOR;"
+                p { +"Nothing." }
+                p { +"Stare intently." }
+              }
+              is ApptAvail -> {
 
-        p { +"Nothing." }
-        p { +"Stare intently." }
+                classes += "hasAppt"
+                val apptDt = LocalDateTime.parse(details.isoDate)
+
+                val isOld = getCutoffDate()?.let { apptDt.date > it } ?: false
+                if (isOld) style = "background: #f8f8a0;"
+
+                with(apptDt) {
+                  b(classes = "apptDate") { +"${month.name} $dayOfMonth" }
+                  p(classes = "apptTime") {
+                    +("$hour".padStart(2, '0') + ':' + "$minute".padStart(2, '0'))
+                  }
+                }
+                hr {}
+                input(type = InputType.button, classes = "myButton grabLink") {
+                  onClick = "location.href='${details.url}'"
+                  value =
+                      if (isOld) {
+                        classes += "grabLinkOld"
+                        "GRAB IT?"
+                      } else {
+                        classes += "grabLinkFresh"
+                        "GRAB IT!"
+                      }
+                }
+              }
+            }
+          })
+    }
+  }
+
+  fun redrawAll() {
+    curAppts.values.forEach { render(it) }
+  }
+
+  fun invalidateAll() {
+    curAppts.values.clear()
+    MVC.values().forEach { render(ApptNoData(it, null)) }
+  }
+
+  fun alertIfNeeded() {
+    for ((mvc, details) in curAppts) {
+      details as? ApptAvail ?: continue
+      val cutoff = getCutoffDate()
+      if (cutoff != null && cutoff < LocalDateTime.parse(details.isoDate).date) {
+        continue
       }
-      is ApptAvail -> {
-        classes += "hasAppt"
-        val apptDt = LocalDateTime.parse(msg.isoDate)
-        val apptInstant = apptDt.toInstant(TimeZone.currentSystemDefault())
-        this@div.style = "background: #${getCellColor(apptInstant)}"
-
-        with(apptDt) {
-          b(classes = "apptDate") { +"${month.name} $dayOfMonth" }
-          p(classes = "apptTime") { +("$hour".padStart(2, '0') + ':' + "$minute".padStart(2, '0')) }
-        }
-        input(type = InputType.button, classes = "myButton grabLink") {
-          onClick = "location.href='${msg.url}'"
-          value = "GRAB IT!"
-          classes += "grabLink"
-        }
+      // TODO fragile
+      val isChecked =
+          getMvcBox(mvc).firstElementChild!!.firstElementChild!!.asDynamic().checked as Boolean
+      if (!isChecked) {
+        continue
       }
+      if (allowNotify) {
+        Notification("Appointment available at ${mvc.location} at ${details.isoDate}")
+      }
+      alertAudio.play()
+      return
     }
   }
 }
@@ -79,28 +124,16 @@ fun setStatusLine(status: MVCServerStatus?) {
   }
 }
 
-fun alertIfNeeded() {
-  curAppts.forEach { (mvc, details) ->
-    when (details) {
-      is ApptTaken -> return@forEach
-      is ApptAvail -> {
-        val cutoff = getCutoffDate()
-        if (cutoff != null && cutoff < LocalDateTime.parse(details.isoDate).date) {
-          return
-        }
-        // TODO fragile
-        val isChecked =
-            getMvcBox(mvc).firstElementChild!!.firstElementChild!!.asDynamic().checked as Boolean
-        if (!isChecked) {
-          return@forEach
-        }
-        Audio("apptavail.wav").play()
-        if (allowNotify) {
-          Notification("Appointment available at ${mvc.name} at ${details.isoDate}")
-        }
-        return
-      }
+var logInitialized = false
+
+fun increaseFomo(msg: MVCLogLine) {
+  with(document.getElementById(LOG_BOX_ID)!!) {
+    while (childNodes.length > 10) {
+      removeChild(childNodes[childNodes.length - 1]!!)
     }
+    val ts = if (msg.isoDate != null) "${msg.isoDate}: " else ""
+    insertBefore(
+        document.create.div(classes = "logLineBox") { p { +"$ts${msg.msg}" } }, childNodes[0])
   }
 }
 
@@ -110,6 +143,23 @@ fun getCutoffDate(): LocalDate? {
     return null
   }
   return LocalDate.parse(dateStr)
+}
+
+fun getCurApptType(): ApptType {
+  val name = APPT_TYPE_SELECTOR.asDynamic().value as String
+  return ApptType.valueOf(name)
+}
+
+fun updateLayoutForApptType(apptType: ApptType) {
+  val curClsString = apptType.centerType.classString()
+  document.getElementsByClassName(OUTER_CELL_CLS).asList().forEach {
+    val classes = it.classList.asList()
+    if (curClsString in classes || ALWAYS_SHOW_CLS in classes) {
+      it.asDynamic().style.display = "block"
+    } else {
+      it.asDynamic().style.display = "none"
+    }
+  }
 }
 
 @ExperimentalTime
@@ -125,41 +175,29 @@ class Socket {
     val msg = Json.decodeFromString<MVCWsMsg>(message.data as String)
     console.log("Received ${message.data as String} from server.")
     when (msg) {
-      is ApptDetails -> {
-        curAppts[msg.mvc] = msg
-        val outerCell = document.getElementById(msg.mvc.cellDivId())!!
-        with(outerCell) {
-          removeChild(children[children.length - 1]!!)
-          append(drawApptCell(msg))
-        }
-      }
-      is MVCLogLine -> {
-        with(document.getElementById("logBox")!!) {
-          while (childNodes.length > 10) {
-            removeChild(childNodes[childNodes.length - 1]!!)
-          }
-          insertBefore(
-              document.create.div(classes = "logLineBox") { p { +"${msg.isoDate}: ${msg.msg}" } },
-              childNodes[0])
-        }
-      }
+      is ApptDetails -> ApptState.updateDetails(msg)
+      is MVCLogLine -> increaseFomo(msg)
       is MVCServerStatus -> setStatusLine(msg)
+      // todo refine hierarchy to disallow this
+      is MVCClientMsg -> console.error("Got client message from server -- oopsie.")
     }
   }
 
-  private var alreadyRecovering: Boolean = false
+  private var sendBuffer: MutableList<String> = mutableListOf()
+
+  private var currentlyRecovering: Boolean = false
   private fun reconnect() {
-    if (alreadyRecovering) {
+    if (currentlyRecovering) {
       return
     }
     socket.close()
     setStatusLine(MVCServerStatus("Connection to server severed... trying to reconnect.", "error"))
     window.setTimeout(::initSocket, 5000)
-    alreadyRecovering = true
+    currentlyRecovering = true
   }
 
   private fun initSocket() {
-    alreadyRecovering = false
+    currentlyRecovering = false
 
     socket = WebSocket("ws://njmvc.enaumov.me/ws")
     // socket = WebSocket("ws://127.0.0.1:8081/ws")
@@ -169,7 +207,17 @@ class Socket {
         {
           console.log("Websocket opened.")
           setStatusLine(MVCServerStatus("Server connected.", "healthy"))
+          if (!logInitialized) {
+            logInitialized = true
+            increaseFomo(
+                MVCLogLine("New and taken appointments will appear in the FOMO log.", null))
+          }
+          // ready indicator "burn" message
           socket.send("")
+          // always send our current apt type on reconnect to avoid staleness
+          socket.send(Json.encodeToString(MVCClientMsg(getCurApptType())))
+          sendBuffer.forEach { send(it) }
+          sendBuffer.clear()
         }
     socket.onclose =
         {
@@ -182,16 +230,50 @@ class Socket {
           reconnect()
         }
   }
+
+  /**
+   * Sends a message on the wire if the socket is alive.
+   *
+   * If the socket is recovering, queues the message to be sent when it's next alive.
+   */
+  fun send(msg: String) {
+    if (currentlyRecovering) {
+      sendBuffer.add(msg)
+    } else {
+      socket.send(msg)
+    }
+  }
 }
 
 @ExperimentalTime
 fun main() {
+
+  // initialize layout
+  updateLayoutForApptType(getCurApptType())
+
+  // set up socket
+  val socket = Socket()
+
+  // install timers
+  window.setInterval(ApptState::alertIfNeeded, 3000)
+
+  // install listeners
   Notification.requestPermission {
     when (it) {
       NotificationPermission.GRANTED -> allowNotify = true
       else -> {}
     }
   }
-  window.setInterval(::alertIfNeeded, 3000)
-  Socket()
+
+  APPT_TYPE_SELECTOR.addEventListener(
+      "change",
+      callback = {
+        ApptState.invalidateAll()
+        val apptType = getCurApptType()
+        val msg = Json.encodeToString(MVCClientMsg(apptType))
+        socket.send(msg)
+        updateLayoutForApptType(apptType)
+      })
+
+  DATE_INPUT.addEventListener("change", callback = { ApptState.redrawAll() })
 }
