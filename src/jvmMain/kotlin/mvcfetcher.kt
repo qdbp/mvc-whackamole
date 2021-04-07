@@ -27,7 +27,7 @@ fun LocalDateTime.format(formatter: DateTimeFormatter): String {
 }
 
 @ExperimentalTime
-class MVCFetcher(val apptType: ApptType) {
+class MVCFetcher(private val apptType: ApptType) {
 
   @Serializable private data class NextAppt(val next: String)
 
@@ -67,7 +67,7 @@ class MVCFetcher(val apptType: ApptType) {
     }
   }
 
-  private fun infoWithAppend(msg: String) {
+  private fun recordSlotChange(msg: String) {
     updateLog as MutableMap
     mvcLogger.info { msg }
     updateLog[Clock.System.now()] = msg
@@ -76,11 +76,11 @@ class MVCFetcher(val apptType: ApptType) {
   private fun watchdogLoop() {
     Clock.System.now().let {
       when {
-        it - lastSuccess > 30.seconds -> exitProcess(-1)
+        it - lastSuccess > 60.seconds -> exitProcess(-1)
+        it - lastSuccess > 40.seconds ->
+            mvcLogger.error { "More than 40 seconds since last update!" }
         it - lastSuccess > 20.seconds ->
-            mvcLogger.error { "More than 20 seconds since last update!" }
-        it - lastSuccess > 10.seconds ->
-            mvcLogger.warn { "More than 10 seconds since last update!" }
+            mvcLogger.warn { "More than 20 seconds since last update!" }
       }
     }
   }
@@ -91,7 +91,7 @@ class MVCFetcher(val apptType: ApptType) {
     thread(name = "watchdog${apptType.name}") {
       while (true) {
         watchdogLoop()
-        Thread.sleep(1000)
+        Thread.sleep(5000)
       }
     }
 
@@ -125,7 +125,7 @@ class MVCFetcher(val apptType: ApptType) {
             if (next == "No Appointments Available") {
               availMap.remove(mvc)?.also {
                 lastUpdated[mvc] = Clock.System.now()
-                infoWithAppend(
+                recordSlotChange(
                     "Appointment for ${mvc.location} at ${it.format(NEXT_APT_FORMAT)} taken.")
               }
               return@forEach
@@ -138,7 +138,7 @@ class MVCFetcher(val apptType: ApptType) {
             availMap[mvc] = gotDate
             lastUpdated[mvc] = Clock.System.now()
 
-            infoWithAppend("New slot at ${mvc.location} at ${gotDate.format(NEXT_APT_FORMAT)}")
+            recordSlotChange("New slot at ${mvc.location} at ${gotDate.format(NEXT_APT_FORMAT)}")
           } catch (e: Exception) {
             mvcLogger.error { "Caught $e" }
             Thread.sleep(1000)

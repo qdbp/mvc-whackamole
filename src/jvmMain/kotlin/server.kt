@@ -214,7 +214,7 @@ fun main() {
 
               // send warnings
               val lastSuccAgo = Clock.System.now() - fetcher.lastSuccess
-              if (lastSuccAgo > 5.seconds) {
+              if (lastSuccAgo > 10.seconds) {
                 hasWarned = true
                 send(
                     Json.encodeToString<MVCWsMsg>(
