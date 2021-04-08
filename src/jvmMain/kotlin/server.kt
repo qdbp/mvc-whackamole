@@ -13,8 +13,9 @@ import kotlin.math.roundToInt
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.receiveOrNull
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.time.withTimeoutOrNull
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -36,8 +37,6 @@ fun main() {
   // TODO can pause fetchers when no clients of its type are connected
   // TODO can throttle/speed up delay based on appointment scarcity
   val fetchers = ApptType.values().associateWith { MVCFetcher(it).apply { start() } }
-  var curApptType = DEFAULT_APPT_TYPE
-
   mvcLogger.info { "Starting servers with refresh delay = $sendDelay ms" }
 
   embeddedServer(Netty, port = 8080, host = "127.0.0.1") {
@@ -56,16 +55,19 @@ fun main() {
             val host = this.call.request.origin.remoteHost
             mvcLogger.info { "New connection from $host" }
 
+            // client-local state variables
+            val lastSentTime = MVC.values().associateWith { Instant.DISTANT_PAST }.toMutableMap()
+            var lastLogSentTime: Instant = Instant.DISTANT_PAST
+            var hasWarned = false
+            var curApptType = DEFAULT_APPT_TYPE
+            var fetcher = fetchers[curApptType]!!
+
             // burn one incoming frame to signify the client is ready
             incoming.receive()
 
-            val lastSentTime = MVC.values().associateWith { Instant.DISTANT_PAST } as MutableMap
-            var lastLogSentTime: Instant = Instant.DISTANT_PAST
-            var hasWarned = false
-
             while (true) {
               // update current appointment type if client wants to
-              incoming.receiveOrNull()?.let { frame ->
+              withTimeoutOrNull(50) { incoming.receive() }?.let { frame ->
                 when (frame) {
                   is Frame.Text -> {
                     val msg = Json.decodeFromString<MVCClientMsg>(frame.readText())
@@ -74,23 +76,22 @@ fun main() {
                     // frame is updated. We comply to avoid fragility.
                     // As Alexander of Macedon once said, "there is nothing to fear
                     // except getting stuck in an invalid state."
-                    curApptType = msg.apptType
-                    lastLogSentTime = Instant.DISTANT_PAST
-                    lastSentTime.replaceAll { _, _ -> Instant.DISTANT_PAST }
                     mvcLogger.info { "$host has requested info for $curApptType" }
+                    curApptType = msg.apptType
+                    fetcher = fetchers[curApptType]!!
+                    lastLogSentTime = Instant.DISTANT_PAST
+                    MVC.values().forEach { lastSentTime[it] = Instant.DISTANT_PAST }
                   }
                   else -> mvcLogger.error { "Received bad frame type $frame" }
                 }
               }
 
-              val fetcher = fetchers[curApptType]!!
-
               // send appointment slots
               curApptType.centers.forEach { mvc ->
-                fetcher.lastUpdated[mvc]?.let {
-                  if (it > lastSentTime[mvc]!!) {
-                    val now = Clock.System.now()
-                    lastSentTime[mvc] = now
+                fetcher.lastUpdated[mvc]?.let { lastUpdated ->
+                  val lastSent = lastSentTime[mvc]!!
+                  if (lastUpdated > lastSent) {
+                    lastSentTime[mvc] = lastUpdated
                     mvcLogger.debug { "Sending new for $mvc to $host" }
                     send(Json.encodeToString(fetcher.getForMVC(mvc)))
                   }

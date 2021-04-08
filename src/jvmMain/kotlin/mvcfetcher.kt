@@ -136,9 +136,10 @@ class MVCFetcher(private val apptType: ApptType) {
 
             availMap[mvc]?.let { curDate -> if (curDate <= gotDate) return@forEach }
             availMap[mvc] = gotDate
-            lastUpdated[mvc] = Clock.System.now()
 
+            lastUpdated[mvc] = Clock.System.now()
             recordSlotChange("New slot at ${mvc.location} at ${gotDate.format(NEXT_APT_FORMAT)}")
+
           } catch (e: Exception) {
             mvcLogger.error { "Caught $e" }
             Thread.sleep(1000)

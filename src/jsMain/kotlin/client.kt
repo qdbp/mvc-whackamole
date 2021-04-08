@@ -224,7 +224,6 @@ class Socket {
     currentlyRecovering = false
 
     socket = WebSocket("ws://njmvc.enaumov.me/ws")
-    // socket = WebSocket("ws://127.0.0.1:8081/ws")
 
     socket.onmessage = ::onMessage
     socket.onopen =
