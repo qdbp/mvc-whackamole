@@ -223,6 +223,7 @@ class Socket {
   private fun initSocket() {
     currentlyRecovering = false
 
+    // socket = WebSocket("ws://127.0.0.1:8081/ws")
     socket = WebSocket("ws://njmvc.enaumov.me/ws")
 
     socket.onmessage = ::onMessage

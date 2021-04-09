@@ -97,8 +97,9 @@ class MVCFetcher(private val apptType: ApptType) {
 
     thread(name = "fetcher${apptType.name}", isDaemon = true) {
       val gets =
-          MVC.values().associateWith {
-            HttpGet("$QUERY_URL?appointmentTypeId=${apptType.id}&locationId=${it.id}")
+          MVC.values().associateWith { mvc ->
+            HttpGet(
+                "$QUERY_URL?appointmentTypeId=${apptType.id}&locationId=${apptType.getIdForMVC(mvc)}")
           }
 
       while (true) {
@@ -139,7 +140,6 @@ class MVCFetcher(private val apptType: ApptType) {
 
             lastUpdated[mvc] = Clock.System.now()
             recordSlotChange("New slot at ${mvc.location} at ${gotDate.format(NEXT_APT_FORMAT)}")
-
           } catch (e: Exception) {
             mvcLogger.error { "Caught $e" }
             Thread.sleep(1000)
@@ -152,7 +152,7 @@ class MVCFetcher(private val apptType: ApptType) {
 
   private fun apptUrl(mvc: MVC, date: LocalDateTime): String {
     val minString = "${date.minute}".padStart(2, '0')
-    return "$SCHEDULE_URL/${apptType.id}/${mvc.id}/" +
+    return "$SCHEDULE_URL/${apptType.id}/${apptType.getIdForMVC(mvc)}/" +
         "${date.format(DateTimeFormatter.ISO_DATE)}/${date.hour}$minString"
   }
 }
