@@ -132,7 +132,7 @@ class MVCFetcher(private val apptType: ApptType) {
               return@forEach
             }
             val gotDate =
-                JLDT.parse(next.removePrefix("Next Available: "), NEXT_APT_FORMAT)
+                JLDT.parse(next.substringAfterLast("/> ").removePrefix("Next Available: "), NEXT_APT_FORMAT)
                     .toKotlinLocalDateTime()
 
             availMap[mvc]?.let { curDate -> if (curDate <= gotDate) return@forEach }
